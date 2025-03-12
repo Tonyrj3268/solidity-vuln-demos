@@ -21,7 +21,8 @@ def chat_completion(messages:str) -> SolidityCodeExample:
         model="o3-mini-2025-01-31",
         messages=[{"role": "system", "content": "You are a solidity developer. Please generate attack code, vulnerability code, and fixed code for the following solidity code."},
                   {"role": "user", "content": messages},],
-        response_format=SolidityCodeExample
+        response_format=SolidityCodeExample,
+        temperature=0,
     )
     return response.choices[0].message.parsed
 
