@@ -1,34 +1,28 @@
-// 修正後的程式碼：改正 Unsafe Credit Transfer 漏洞，先更新狀態再執行轉帳，避免重入攻擊
+// 以下為修正後的程式碼，可以防範 reentrancy 攻擊，此修正版遵循 Checks-Effects-Interactions 模式
 
 contract WalletFixed {
+    // 狀態變數：儲存每個使用者的餘額
     mapping(address => uint) private userBalances;
 
-    // 使用 'deposit' 函式存入 ETH
+    // 使用者可先存款，方便後續提款
     function deposit() public payable {
         userBalances[msg.sender] += msg.value;
     }
 
-    // 修正後的 withdrawBalance：先更新餘額，再進行轉帳，防止重入攻擊
+    // 安全的 withdrawBalance 函式：先更新狀態變數，再執行外部呼叫
     function withdrawBalance() public {
         uint amountToWithdraw = userBalances[msg.sender];
-        if (amountToWithdraw > 0) {
-            // 修正重點：先將用戶餘額設為 0，再執行轉帳，這樣即便攻擊合約重入，也無法重複提領
-            userBalances[msg.sender] = 0;
-            (bool success, ) = msg.sender.call{value: amountToWithdraw}("");
-            require(success, "Transfer failed");
-        }
-    }
+        require(amountToWithdraw > 0, 'No funds available');
 
-    // 其他相關函式，例如查詢合約餘額
-    function getBalance() public view returns (uint) {
-        return address(this).balance;
+        // 先將狀態更新，此動作防止重入攻擊
+        userBalances[msg.sender] = 0;
+
+        // 再執行外部呼叫，傳輸正確的提款金額
+        (bool success, ) = msg.sender.call{value: amountToWithdraw}('');
+        require(success, 'Transfer failed');
     }
 }
 
-
-/*
-補充說明：
-1. 這裡示範的漏洞即出現於進行 Credit Transfer 時，未先更新狀態，導致攻擊合約透過 fallback() 重入呼叫 withdrawBalance()。
-2. 攻擊合約可利用此漏洞在一次提款操作中多次呼叫 withdrawBalance，轉移更多資金。
-3. 修正方案透過先將用戶餘額歸零，再進行轉帳，從根本上避免了重入攻擊的風險。
-*/
+// 補充說明：
+// 1. 在修正後的 withdrawBalance 函式中，我們將 userBalances[msg.sender] = 0; 移到外部呼叫之前，斷絕了攻擊者利用回呼函式進行 reentrancy 的可能。
+// 2. 此外，建議在實作中也可以參考 OpenZeppelin 的 ReentrancyGuard，以防止類似攻擊。

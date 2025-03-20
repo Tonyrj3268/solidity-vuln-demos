@@ -1,19 +1,16 @@
-// 修正後程式碼示例：
-// 修正思路：避免依賴可被礦工控制的區塊變數（如 block.timestamp）的固定值來控制合約行為。
-// 既然原修正說明為 N/A，我們提供一個移除該條件判斷、不依賴區塊時間的版本。
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+// 修正後的程式碼
+// 修正說明：
+// 為避免依賴 block.timestamp 等區塊鏈控制資訊而導致的可預測性操縱，移除了相關條件判斷邏輯。
+// 如非必要，不應使用礦工可以影響的區塊變數作為關鍵條件。
 
 contract TestFixed {
-    // 移除固定存儲區塊時間的變數，直接在函式中進行所需邏輯處理
+    // 如果需要依賴時間，應直接在函式中讀取 block.timestamp，且謹慎設計邏輯
+    // 此修正版本移除了所有依賴部署時固定時間的判斷，避免礦工利用其時機操縱
     function pay() public {
-        // 移除依賴 block.timestamp 的檢查，直接進行資金轉移，或根據其他可靠的條件判斷
-        // 如果必須依賴時間，建議使用可信的時間機制或引入多重簽名來降低風險。
-        
-        // 此處示範直接發送資金的情形
-        // 注意：使用 send 可能會失敗，請根據需求選用 call/send 或使用安全庫處理 reentrancy 防護
-        require(payable(msg.sender).send(100), "send failed");
+        // 範例修正：直接拒絕呼叫，或以其他安全的邏輯取代原有條件
+        revert("Vulnerable time-control logic has been removed");
     }
 }
-
-// 補充說明：
-// 原始漏洞是因為合約將 block.timestamp 的值採集之後固定下來，
-// 若必須使用區塊控制變數，應該於每個交易中動態採集，或使用其他更安全的方式進行時序控制。
