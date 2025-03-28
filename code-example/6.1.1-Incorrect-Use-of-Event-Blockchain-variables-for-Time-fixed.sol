@@ -1,16 +1,36 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.0;
 
-// 修正後的程式碼
-// 修正說明：
-// 為避免依賴 block.timestamp 等區塊鏈控制資訊而導致的可預測性操縱，移除了相關條件判斷邏輯。
-// 如非必要，不應使用礦工可以影響的區塊變數作為關鍵條件。
+// 修正後的合約
+// 修正重點: 移除部署時就固定的 block.timestamp 變數，改為在每次函式呼叫時利用當前區塊的 timestamp，
+//          以減少礦工藉由操控 timestamp 的可能性。注意：雖然這仍然有一定的操控空間，但至少不再依賴於一個固定值。
 
 contract TestFixed {
-    // 如果需要依賴時間，應直接在函式中讀取 block.timestamp，且謹慎設計邏輯
-    // 此修正版本移除了所有依賴部署時固定時間的判斷，避免礦工利用其時機操縱
-    function pay() public {
-        // 範例修正：直接拒絕呼叫，或以其他安全的邏輯取代原有條件
-        revert("Vulnerable time-control logic has been removed");
+    // 不再於狀態變數中儲存固定時間，改為在 pay() 函式中動態取得當前區塊的 timestamp
+    function pay() public payable {
+        uint currentTime = block.timestamp;  // 使用當前區塊時間
+        if (currentTime % 2 == 1) {
+            // 使用 transfer 進行 Ether 傳送（實務上請加入錯誤處理機制）
+            payable(msg.sender).transfer(100);
+        }
     }
+}
+
+// 雖然修正後的合約仍然根據區塊時間運作，但因每次都以當前時間作判斷，攻擊者和礦工難以預先設定有利條件。
+// 攻擊合約示例：
+// 1. 部署 TestFixed 合約；
+// 2. 攻擊者部署 AttackFixed 合約，傳入 TestFixed 的位址；
+// 3. 攻擊者呼叫 attack()，但因為 block.timestamp 為動態值，攻擊者較難預知條件是否滿足。
+
+contract AttackFixed {
+    TestFixed public target;
+
+    constructor(address _target) {
+        target = TestFixed(_target);
+    }
+
+    function attack() public payable {
+        target.pay{value: msg.value}();
+    }
+
+    receive() external payable {}
 }

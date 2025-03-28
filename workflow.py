@@ -13,7 +13,7 @@ class SolidityCodeExample(BaseModel):
     fixed_code: str
 
 
-def chat_completion(messages) -> SolidityCodeExample:
+def chat_completion(client: OpenAI, messages: list) -> SolidityCodeExample:
     # 此處假設 API 接收完整的 messages 列表
     response = client.beta.chat.completions.parse(
         model="o3-mini-2025-01-31",
@@ -23,9 +23,11 @@ def chat_completion(messages) -> SolidityCodeExample:
     return response.choices[0].message.parsed
 
 
-def add_user_message(conversation: list, user_msg: str):
+def add_user_message(
+    client: OpenAI, conversation: list, user_msg: str
+) -> SolidityCodeExample:
     conversation.append({"role": "user", "content": user_msg})
-    answer = chat_completion(conversation)
+    answer = chat_completion(client, conversation)
     # 假設 answer 為 SolidityCodeExample 型態，需轉為字串再儲存回對話中
     conversation.append({"role": "assistant", "content": answer.model_dump_json()})
     return answer
@@ -39,7 +41,7 @@ def clean_code(code: str) -> str:
     return result
 
 
-def compile_code(code):
+def compile_code(code: str) -> tuple:
     """
     嘗試編譯傳入的 Solidity 程式碼。
     成功則回傳 (True, compiled_result)，失敗則回傳 (False, error_message)
@@ -53,19 +55,23 @@ def compile_code(code):
 
 
 def process_code_generation(
-    conversation: list, prompt_text: str, index_val: str, defect_name: str
+    client: OpenAI,
+    conversation: list,
+    prompt_text: str,
+    index_val: str,
+    defect_name: str,
 ) -> None:
     """
     處理特定漏洞生成程式碼並嘗試編譯，若編譯失敗則回饋錯誤訊息給 GPT 進行修正。
     code_type: "vulnerability" 或 "fixed"
     """
-    max_attempts = 5
+    max_attempts = 3
     attempt = 0
     current_prompt = prompt_text
 
     while attempt < max_attempts:
         # 更新對話歷程並獲取生成的程式碼
-        solution = add_user_message(conversation, current_prompt)
+        solution = add_user_message(client, conversation, current_prompt)
         codes = {
             "vulnerability": solution.vulnerability_code,
             "fixed": solution.fixed_code,
@@ -108,8 +114,13 @@ if __name__ == "__main__":
     excel_path = "output.xlsx"
     df = pd.read_excel(excel_path)
     target_index = [
+        "0.0.0",
+        "1",
+        "1.1",
         "1.1.1",
         "1.1.2",
+        "1.2",
+        "1.3",
         "2.1.2",
         "3.1",
         "4.2",
@@ -119,6 +130,8 @@ if __name__ == "__main__":
         "7.1.1",
         "7.1.2",
     ]
+    last_index = "1.7.4"
+    is_last_index = False
     output_folder = "code-example"
     os.makedirs(output_folder, exist_ok=True)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -138,8 +151,11 @@ if __name__ == "__main__":
         index_val = (
             row["index"] if "index" in row and not pd.isna(row["index"]) else str(idx)
         )
-        if index_val not in target_index:
-            continue
+        if index_val == last_index:
+            is_last_index = True
+            break
+        # if not is_last_index:
+        #     continue
         defect_name = str(row["defectname"]) if "defectname" in row else ""
         description = str(row["description"]) if "description" in row else ""
         original_code = clean_code(
@@ -163,16 +179,19 @@ if __name__ == "__main__":
         - 請在同一檔案裡補上程式碼部分可使用最小可行的攻擊範例（如需多步驟呼叫或部署前置動作，請一併敘述）。
         - 請把程式碼漏洞重點部位（如狀態變數、函式）標示出來並加以註解。
         2. fixed_code
+        - 請在同一檔案裡補上程式碼部分可使用最小可行的攻擊範例（如需多步驟呼叫或部署前置動作，請一併敘述）。
 
         注意：
+        1. 請將程式碼的 pragma solidity 改為 >=0.8.0 版本。
         1. 在攻擊手法和對應漏洞和修復段落使用「繁體中文」補充描述。
         2. 如果你認為該修正無法充分展示出這個漏洞造成的理由，或是該程式碼不夠完整，請更改原文的程式碼並做出完整的補充和解釋。
-        3. 如果這個漏洞和指定的版本無關，不要在第一行寫出任何版本和 pragma solidity 以避免誤會。
+        3. 如果這個漏洞和指定的版本無關，請特別在 pragma solidity 標示或說明以避免誤會。
         4. 如果漏洞與某些特定版本（Solidity 或第三方 Library）有關，請說明；關於 solidity 的 require 使用，請記得在 msg 使用英文撰寫避免編譯錯誤。
+
+        根據Solidity >=0.8.0版本的語法規範，請記得以下內容：
+        1. 若要實現接收 Ether 的 fallback 功能，應使用 fallback 或 receive 關鍵字來正確定義函數。
         """
 
         process_code_generation(
-            conversation, textwrap.dedent(prompt_text), index_val, defect_name
+            client, conversation, textwrap.dedent(prompt_text), index_val, defect_name
         )
-        print("漏洞與修正程式碼均已生成且可編譯。")
-        break  # 這裡只示範一筆，實際應該移除 break 以處理所有資料
